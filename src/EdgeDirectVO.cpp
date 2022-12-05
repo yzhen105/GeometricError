@@ -31,6 +31,13 @@ EdgeDirectVO::EdgeDirectVO()
     for(size_t i = 0; i < m_X3DVector.size(); ++i)
         m_X3DVector[i].resize(length / std::pow(4, i) , Eigen::NoChange); //3 Vector for each pyramid for each image pixel
 
+    //> cchien3: initialize m_X2D_ref_Vector
+    m_X2D_ref_Vector.resize(EdgeVO::Settings::PYRAMID_DEPTH); // Vector for each pyramid level
+    for(size_t i = 0; i < m_X2D_ref_Vector.size(); ++i)
+        m_X2D_ref_Vector[i].resize(length / std::pow(4, i) , Eigen::NoChange); //2 Vector for each pyramid for each image pixel
+    
+    m_X2D_ref.resize(length, Eigen::NoChange);
+
     m_X3D.resize(length, Eigen::NoChange);
     m_warpedX.resize(length);
     m_warpedY.resize(length);
@@ -83,6 +90,10 @@ void EdgeDirectVO::runEdgeDirectVO()
 
     //Prepare some vectors
     prepare3DPoints();
+
+    //> cchien3: also prepare some vectors
+    prepareEdgeCoordinates();
+
     //Init camera_pose with ground truth trajectory to make comparison easy
     Pose camera_pose = m_trajectory.initializePoseToGroundTruth(m_sequence.getFirstTimeStamp());
     Pose keyframe_pose = camera_pose;
@@ -93,7 +104,10 @@ void EdgeDirectVO::runEdgeDirectVO()
     
     outputPose(camera_pose, m_sequence.getFirstTimeStamp());
     m_statistics.addStartTime((float) EdgeVO::CycleTimer::currentSeconds());
-    for (size_t n = 0; m_sequence.sequenceNotFinished(); ++n)
+
+    //> cchien3: DEBUGGING!!
+    //for (size_t n = 0; m_sequence.sequenceNotFinished(); ++n)
+    for (size_t n = 0; n < 1; ++n)
     {
         std::cout << std::endl << camera_pose << std::endl;
 
@@ -147,11 +161,17 @@ void EdgeDirectVO::runEdgeDirectVO()
             float lambda = 0.f;
             float error_last = EdgeVO::Settings::INF_F;
             float error = error_last;
+            float error_geometry = error_last;
             for(int i = 0; i < EdgeVO::Settings::MAX_ITERATIONS_PER_PYRAMID[ lvl ]; ++i)
             {
                 error_last = error;
                 //* yzhen105:  + GeometricError(relative_pose.inversePoseEigen(), lvl)
                 error = warpAndProject(relative_pose.inversePoseEigen(), lvl);// + GeometricError(relative_pose.inversePoseEigen(), lvl);
+
+                //> cchien3: add geometrical error here
+                std::cout << "Computing geometric error... " << std::endl;
+                //error_geometry = GeometricError(relative_pose.inversePoseEigen(), lvl);
+
                 // Levenberg-Marquardt
                 if( error < error_last)
                 {
@@ -273,6 +293,10 @@ void EdgeDirectVO::prepareVectors(int lvl)
 ////////////////////////////////////////////////////////////
 // Edge Direct VO
 ////////////////////////////////////////////////////////////
+
+    //> cchien3: DEBUGGING!
+    std::cout << "check point at prepare Vectors" << std::endl;
+
     numElements = (m_edgeMask.array() != 0).count();
     
     m_im1Final.resize(numElements);
@@ -281,6 +305,8 @@ void EdgeDirectVO::prepareVectors(int lvl)
     m_ZFinal.resize(numElements);
     m_X3D.resize(numElements ,Eigen::NoChange);
     m_finalMask.resize(numElements);
+
+    std::cout << "prepare Vectors check point 1" << std::endl;
 
 
     size_t idx = 0;
@@ -295,14 +321,70 @@ void EdgeDirectVO::prepareVectors(int lvl)
             ++idx;
         }
     }
+
+
+    //> cchien3 ========================================================================
 	size_t numElements_ref = (m_edgeMask_reference.array() != 0).count();
 	size_t idx_ref = 0;
+
+    std::cout << "prepare Vectors check point 2" << std::endl;
     //* yzhen105: get the ccoordinates for reference edge pixels
-	int idx_vec = 0;
+	//int idx_vec = 0;
     const int w = m_sequence.getFrameWidth(lvl);
     const int h = m_sequence.getFrameHeight(lvl);
     m_finalMask_reference.resize(numElements_ref);
-    for(int i = 0; i < m_edgeMask_reference.rows(); i++)
+
+    std::cout << m_edgeMask_reference.rows() << std::endl;
+
+    //> cchien3: fix the Segmentation fault issue
+    //> Now that m_X2D_ref_Vector[lvl].row(i) is a std::vector storing ALL pixel coordinates (x,y) by (m_X2D_ref_Vector[lvl](i,0), m_X2D_ref_Vector[lvl](i,1))
+    //> if you want the whole row, simply use m_X2D_ref_Vector[lvl].row(i)
+    //> m_X2D_ref is a Eigen matrix of Nx2 storing edge-only pixel coordinates (x,y)
+    //> 
+    int test_i = 0;
+    for(int i = 0; i < m_edgeMask_reference.rows(); ++i)
+    {
+        //> cchien3: if it is an edge pixel
+        if(m_edgeMask_reference[i] != 0)
+        {
+            if (idx_ref == 0) {
+                test_i = i;
+                std::cout << i << std::endl;
+            }
+            m_finalMask_reference[idx_ref] = m_edgeMask_reference[i];
+            m_X2D_ref.row(idx_ref) = (m_X2D_ref_Vector[lvl].row(i)).array();
+            ++idx_ref;
+        }
+    }
+
+    //> TEST TO UNDERSTAND HOW EIGEN WORKS ...
+    std::cout << "level " << lvl << ":" << std::endl;
+    std::cout << m_X2D_ref.row(0) << std::endl;
+    std::cout << m_X2D_ref.row(1) << std::endl;
+    std::cout << m_X2D_ref.row(0) - m_X2D_ref.row(1) << std::endl;
+    std::cout << m_X2D_ref(0,1) << std::endl;
+    std::cout << (m_X2D_ref_Vector[lvl].row(test_i)).array() << std::endl;
+
+    //> cchien3: write all edge pixels of the bottom pyramid image to a file for validations
+    if (lvl == getBottomPyramidLevel()) {
+        std::cout << "Writing data to a file ..." << std::endl;
+        std::ofstream edgeCoordinates_file;
+        std::string writeFileDir = "/users/cchien3/data/cchien3/github-repos/GeometricError/";
+        writeFileDir.append("refImg_edgeCoordinates.txt");
+        edgeCoordinates_file.open(writeFileDir);
+        if ( !edgeCoordinates_file.is_open() ) {
+            std::cout << "Could not open the edgeCoordinates_file!" << std::endl;
+        }
+
+        for (int i = 0; i < m_finalMask_reference.rows(); i++) {
+            edgeCoordinates_file << m_X2D_ref(i,0) << "\t" << m_X2D_ref(i,1) << "\n";
+        }
+
+        edgeCoordinates_file.close();
+    }
+
+
+/*    for(int i = 0; i < m_edgeMask_reference.rows(); i++)
 	{
         for (int y = 0; y < h; ++y)
         {
@@ -310,17 +392,19 @@ void EdgeDirectVO::prepareVectors(int lvl)
             {
                 if (m_edgeMask_reference[i] != 0)
                 {
-                    m_finalMask_reference[idx_ref] = m_edgeMask_reference[i];
+                    std::cout << x << ", " << y << std::endl;   
                     m_X2D_ref_Vector[lvl].row(idx_vec) << x, y;
                     ++idx_vec;
                     ++idx_ref;
                 }
             }
         }
-    }
+    }*/
+
+    std::cout << "prepare Vectors check point 3" << std::endl;
     m_edgeMask_reference.resize(numElements_ref);
 	m_edgeMask_reference = m_finalMask_reference;
-    m_X2D_ref            = m_X2D_ref_Vector[lvl].array();
+    //m_X2D_ref            = m_X2D_ref_Vector[lvl].array();
 
 #endif //EDGEVO_SUBSET_POINTS
 ////////////////////////////////////////////////////////////
@@ -328,6 +412,8 @@ void EdgeDirectVO::prepareVectors(int lvl)
     m_Z = m_ZFinal;
     m_edgeMask.resize(numElements);
     m_edgeMask = m_finalMask;
+
+    std::cout << "prepare Vectors check point 4" << std::endl;
     
 }
 
@@ -564,6 +650,25 @@ void EdgeDirectVO::prepare3DPoints( )
     }
 }
 
+//> cchien3: assign pixel coordinates to a 2D image plane m_X2D_ref_Vector
+void EdgeDirectVO::prepareEdgeCoordinates( )
+{
+    for (int lvl = 0; lvl < EdgeVO::Settings::PYRAMID_DEPTH; ++lvl)
+    {
+        int w = m_sequence.getFrameWidth(lvl);
+        int h = m_sequence.getFrameHeight(lvl);
+
+        for (int y = 0; y < h; ++y)
+        {
+            for (int x = 0; x < w; ++x)
+            {
+                int idx = y * w + x;
+                m_X2D_ref_Vector[lvl].row(idx) << x, y;
+            }
+        }
+    }    
+}
+
 void EdgeDirectVO::warpAndCalculateResiduals(const Pose& pose, const std::vector<float>& Z, const std::vector<bool>& E, const int h, const int w, const cv::Mat& cameraMatrix, const int lvl)
 {
     const int ymax = h;
@@ -644,6 +749,9 @@ float EdgeDirectVO::GeometricError(const Eigen::Matrix<double,4,4>& invPose, int
     m_newX2D_ref.resize(Eigen::NoChange, m_X2D_ref.rows());
     //* yzhen105: reprojection 
     m_newX3D     = R * m_X3D.transpose() + t.replicate(1, m_X3D.rows() );
+
+    std::cout << "check point 1" << std::endl;
+
     m_newX2D_ref = m_X2D_ref;
 
     //* yzhen105: get the camera matrix
@@ -656,7 +764,10 @@ float EdgeDirectVO::GeometricError(const Eigen::Matrix<double,4,4>& invPose, int
     const int w = m_sequence.getFrameWidth(lvl);
     const int h = m_sequence.getFrameHeight(lvl);
 
-    
+    //> cchien3: TESTING TO UNDERSTAND EIGEN ...
+    std::cout << "What appears to be in m_newX3D?" << std::endl;
+    std::cout << m_newX3D.row(0) << std::endl;
+
     //* yzhen105: get the reprojected coordinates of edge pixels in new image
     m_warpedX = (fx * (m_newX3D.row(0)).array() / (m_newX3D.row(2)).array() ) + cx;
     m_refX    = m_newX2D_ref.row(0).array();
@@ -685,6 +796,13 @@ float EdgeDirectVO::GeometricError(const Eigen::Matrix<double,4,4>& invPose, int
     size_t numElements = (m_finalMask.array() != 0).count();
     float prev_distance = EdgeVO::Settings::INF_F;
     m_residual_GE.resize(2*numElements);
+
+    //> cchien3
+    /*
+    for (int i = 0; i < m_finalMask_reference.rows(); i++) {
+        // edge point (x,y) = (m_X2D_ref(i,0), m_X2D_ref(i,1))
+    }
+    */
 
     euc_distance_sum = 0.f;
     for(int i = 0; i <  m_warpedX.rows(); ++i)    // new img coordinate

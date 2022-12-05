@@ -33,8 +33,12 @@ class EdgeDirectVO{
         float GeometricError(const Eigen::Matrix<double,4,4>& invPose, int lvl);
         float interpolateVector(const Eigen::Matrix<float, Eigen::Dynamic, Eigen::RowMajor>& toInterp, float x, float y, int w) const;
         bool checkBounds(float x, float xlim, float y, float ylim, float oldZ, float newZ, bool edgePixel);
-
         void terminationRequested();
+
+        //> cchien3: prepare edge points coordinates
+        void prepareEdgeCoordinates();
+
+        
 
     private:
         
