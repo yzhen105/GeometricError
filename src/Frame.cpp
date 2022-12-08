@@ -180,6 +180,14 @@ cv::Mat Frame::getDistanceTransformMap(int lvl) const
 //> cchien3 add: get distance transform label map
 cv::Mat Frame::getDistanceTransformLabelMap(int lvl) const
 {
+    //return (m_pyramidDT_labels[lvl].clone());
+    //cv::Mat A(120, 160, CV_32SC1);
+    //for (int i = 0; i < 120 ; i++) {
+        //for (int j = 0; j < 160 ; j++) {
+            //A.at<int>(i,j) = i*160+j;        
+        //}
+    //}
+    //return (A.clone()).reshape(1, A.rows * A.cols); 
     return (m_pyramidDT_labels[lvl].clone()).reshape(1, m_pyramidDT_labels[lvl].rows * m_pyramidDT_labels[lvl].cols);
 }
 
@@ -334,7 +342,7 @@ void Frame::createCannyEdgePyramids()
         /*if (i == 0) {
             std::cout << "Writing data to a file ..." << std::endl;
             std::ofstream edgeImg_file;
-            std::string writeFileDir = "/users/cchien3/data/cchien3/github-repos/GeometricError/";
+            std::string writeFileDir = "/users/yzhen105/data/yzhen105/github_repo/GeometricError//";
             writeFileDir.append("edgeImgData.txt");
             edgeImg_file.open(writeFileDir);
             if ( !edgeImg_file.is_open() ) std::cout << "Could not open the edgeImg_file!" << std::endl;
@@ -350,7 +358,7 @@ void Frame::createCannyEdgePyramids()
         if (i == 0) {
             std::cout << "Writing data to a file ..." << std::endl;
             std::ofstream edgeImg_file;
-            std::string writeFileDir = "/users/cchien3/data/cchien3/github-repos/GeometricError/";
+            std::string writeFileDir = "/users/yzhen105/data/yzhen105/github_repo/GeometricError//";
             writeFileDir.append("binaryImgData.txt");
             edgeImg_file.open(writeFileDir);
             if ( !edgeImg_file.is_open() ) std::cout << "Could not open the edgeImg_file!" << std::endl;
@@ -372,19 +380,20 @@ void Frame::createCannyEdgePyramids()
         std::string label_type = identifyMatType(m_pyramidDT_labels[i]);
 
         if (i == m_pyramidImage.size()-1 ) {
-            imwrite( "/users/cchien3/data/cchien3/github-repos/GeometricError/Edges.jpg", m_pyramidEdge[i] );
-            imwrite( "/users/cchien3/data/cchien3/github-repos/GeometricError/binary.jpg", m_pyramidEdge_binary[i] );
-            //imwrite( "/users/cchien3/data/cchien3/github-repos/GeometricError/imgDT_dists.jpg", m_pyramidDT_dists[i] );
-            //imwrite( "/users/cchien3/data/cchien3/github-repos/GeometricError/imgDT_lables.jpg", m_pyramidDT_labels[i] );
+            imwrite( "/users/yzhen105/data/yzhen105/github_repo/GeometricError/Edges.jpg", m_pyramidEdge[i] );
+            imwrite( "/users/yzhen105/data/yzhen105/github_repo/GeometricError/binary.jpg", m_pyramidEdge_binary[i] );
+            //imwrite( "/users/yzhen105/data/yzhen105/github_repo/GeometricError//imgDT_dists.jpg", m_pyramidDT_dists[i] );
+            //imwrite( "/users/yzhen105/data/yzhen105/github_repo/GeometricError//imgDT_lables.jpg", m_pyramidDT_labels[i] );
         }
 
         //> cchien3 TODO: WRITE DT AND LABEL RESULTS TO A FILE AND SEE WHETHER THE RESULTS LOOK GOOD!!!!!!
-        if (i == m_pyramidImage.size()-1) {
+        if (i == m_pyramidImage.size()-1 && flag == 0) {
+            flag = 1;
             std::cout << "Writing data to a file ..." << std::endl;
             std::ofstream dists_Img_file, label_img_file;
-            std::string writeFileDir_dists = "/users/cchien3/data/cchien3/github-repos/GeometricError/";
+            std::string writeFileDir_dists = "/users/yzhen105/data/yzhen105/github_repo/GeometricError/";
             writeFileDir_dists.append("DT_Data.txt");
-            std::string writeFileDir_label = "/users/cchien3/data/cchien3/github-repos/GeometricError/";
+            std::string writeFileDir_label = "/users/yzhen105/data/yzhen105/github_repo/GeometricError/";
             writeFileDir_label.append("Label_Data.txt");
             dists_Img_file.open(writeFileDir_dists);
             label_img_file.open(writeFileDir_label);

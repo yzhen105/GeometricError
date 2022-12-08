@@ -235,12 +235,11 @@ void EdgeDirectVO::prepareVectors(int lvl)
     
     //* yzhen105: canny edge for the reference image
     cv2eigen(m_sequence.getReferenceFrame()->getEdges(lvl), m_edgeMask_reference); 
-
     //> cchien3: get distance transform label map for the reference image
     cv2eigen(m_sequence.getReferenceFrame()->getDistanceTransformLabelMap(lvl), m_distLabel_reference); 
-
-    std::cout << "Size of m_distLabel_reference: " << m_distLabel_reference.rows() << std::endl;
+    //m_distLabel_reference.resize(160*120,1);
     
+    std::cout << "Size of m_distLabel_reference: " << m_distLabel_reference.rows() << std::endl;    
     
     size_t numElements;
 ////////////////////////////////////////////////////////////
@@ -377,7 +376,7 @@ void EdgeDirectVO::prepareVectors(int lvl)
     if (lvl == getBottomPyramidLevel()) {
         std::cout << "Writing data to a file ..." << std::endl;
         std::ofstream edgeCoordinates_file;
-        std::string writeFileDir = "/users/cchien3/data/cchien3/github-repos/GeometricError/";
+        std::string writeFileDir = "/users/yzhen105/data/yzhen105/github_repo/GeometricError/";
         writeFileDir.append("refImg_edgeCoordinates.txt");
         edgeCoordinates_file.open(writeFileDir);
         if ( !edgeCoordinates_file.is_open() ) {
@@ -886,7 +885,7 @@ float EdgeDirectVO::GeometricErrorFromCH(const Eigen::Matrix<double,4,4>& invPos
     euc_distance_sum = 0.f;
 
     std::ofstream edgeCoordinates_file;
-    std::string writeFileDir = "/users/cchien3/data/cchien3/github-repos/GeometricError/";
+    std::string writeFileDir = "/users/yzhen105/data/yzhen105/github_repo/GeometricError/";
     writeFileDir.append("fetch_coord_results.txt");
     edgeCoordinates_file.open(writeFileDir);
     std::cout << "numElements is " << numElements << std::endl;
@@ -906,18 +905,19 @@ float EdgeDirectVO::GeometricErrorFromCH(const Eigen::Matrix<double,4,4>& invPos
             //prev_distance = EdgeVO::Settings::INF_F;
 
             //> get the index from warpedX and warpedY 
-            reproj_indx  = m_warpedY[i] * w + m_warpedX[i];
+            reproj_indx  = (int)m_warpedY[i] * w + (int)m_warpedX[i];
 
             //> find the index of the closest from the distance transform label map
-            closest_indx = m_distLabel_reference[reproj_indx];
+            closest_indx = m_distLabel_reference[reproj_indx]-1;
 
             //> recover from the closest index to pixel coordinate
             closestX = m_X2D_ref(closest_indx, 0);
             closestY = m_X2D_ref(closest_indx, 1);
 
-            edgeCoordinates_file << reproj_indx << "\t" << closest_indx << "\t" << m_warpedX[i] << "\t" << m_warpedY[i] << "\t" << closestX << "\t" << closestY << "\n";
+            //edgeCoordinates_file << reproj_indx << "\t" << closest_indx << "\t" << (int)m_warpedX[i] << "\t" << (int)m_warpedY[i] << "\t" << closestX << "\t" << closestY << "\n";
 
             distance = (m_warpedX[i] - closestX)*(m_warpedX[i] - closestX) + (m_warpedY[i] - closestY)*(m_warpedY[i] - closestY);
+            edgeCoordinates_file << reproj_indx << "\t" << closest_indx << "\t" << m_warpedX[i] << "\t" << m_warpedY[i] << "\t" << closestX << "\t" << closestY << "\t" << distance <<"\n";
             /*for(int j = 0; j <  m_X2D_ref.rows(); ++j)  // ref img coordinate
             {
                 //std::cout << "3. run here " << std::endl;

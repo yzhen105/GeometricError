@@ -93,6 +93,7 @@ class Frame{
         std::vector<cv::Mat> m_pyramidEdge_binary;
         std::vector<cv::Mat> m_pyramidDT_dists;
         std::vector<cv::Mat> m_pyramidDT_labels;
+        int flag = 0;
 
         cv::Ptr<cv::ximgproc::StructuredEdgeDetection> m_sforestDetector;
         std::vector<cv::Mat> m_pyramidImageSF;
