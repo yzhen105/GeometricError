@@ -55,6 +55,7 @@ EdgeDirectVO::EdgeDirectVO()
     m_Z.resize(length);
     m_edgeMask.resize(length);
     m_edgeMask_reference.resize(length);
+    m_distLabel_reference.resize(length);
 
     m_outputFile.open(EdgeVO::Settings::RESULTS_FILE);
 
@@ -150,7 +151,9 @@ void EdgeDirectVO::runEdgeDirectVO()
         //relative_pose.setPose(se3ExpEigen(se3LogEigen(relative_pose.getPoseMatrix())));
         
         // For each image pyramid level, starting at the top, going down
-        for (int lvl = getTopPyramidLevel(); lvl >= getBottomPyramidLevel(); --lvl)
+        //for (int lvl = getTopPyramidLevel(); lvl >= getBottomPyramidLevel(); --lvl)
+        //{
+        for (int lvl = getTopPyramidLevel(); lvl >= getTopPyramidLevel(); --lvl)
         {
             
             const Mat cameraMatrix(m_sequence.getCameraMatrix(lvl));
@@ -170,7 +173,7 @@ void EdgeDirectVO::runEdgeDirectVO()
 
                 //> cchien3: add geometrical error here
                 std::cout << "Computing geometric error... " << std::endl;
-                //error_geometry = GeometricError(relative_pose.inversePoseEigen(), lvl);
+                error_geometry = GeometricErrorFromCH(relative_pose.inversePoseEigen(), lvl);
 
                 // Levenberg-Marquardt
                 if( error < error_last)
@@ -229,8 +232,15 @@ void EdgeDirectVO::prepareVectors(int lvl)
     cv2eigen(m_sequence.getCurrentFrame()->getImageVector(lvl), m_im2);
     cv2eigen(m_sequence.getCurrentFrame()->getGradientX(lvl), m_gx);
     cv2eigen(m_sequence.getCurrentFrame()->getGradientY(lvl), m_gy);
+    
     //* yzhen105: canny edge for the reference image
     cv2eigen(m_sequence.getReferenceFrame()->getEdges(lvl), m_edgeMask_reference); 
+
+    //> cchien3: get distance transform label map for the reference image
+    cv2eigen(m_sequence.getReferenceFrame()->getDistanceTransformLabelMap(lvl), m_distLabel_reference); 
+
+    std::cout << "Size of m_distLabel_reference: " << m_distLabel_reference.rows() << std::endl;
+    
     
     size_t numElements;
 ////////////////////////////////////////////////////////////
@@ -249,7 +259,8 @@ void EdgeDirectVO::prepareVectors(int lvl)
 #else
     m_edgeMask = (m_Z.array() <= 0.f).select(0, m_edgeMask);
     //* yzhen105: For reference image
-    m_edgeMask_reference = (m_Z.array() <= 0.f).select(0, m_edgeMask_reference);
+    //m_edgeMask_reference = (m_Z.array() <= 0.f).select(0, m_edgeMask_reference);
+    
     //m_edgeMask = (m_Z.array() <= 0.f).select(0, m_edgeMask);
     //size_t numElements = (m_edgeMask.array() != 0).count() * EdgeVO::Settings::PERCENT_EDGES;
 #endif //REGULAR_DIRECT_VO
@@ -294,9 +305,7 @@ void EdgeDirectVO::prepareVectors(int lvl)
 // Edge Direct VO
 ////////////////////////////////////////////////////////////
 
-    //> cchien3: DEBUGGING!
-    std::cout << "check point at prepare Vectors" << std::endl;
-
+    //> cchien3 add
     numElements = (m_edgeMask.array() != 0).count();
     
     m_im1Final.resize(numElements);
@@ -305,9 +314,6 @@ void EdgeDirectVO::prepareVectors(int lvl)
     m_ZFinal.resize(numElements);
     m_X3D.resize(numElements ,Eigen::NoChange);
     m_finalMask.resize(numElements);
-
-    std::cout << "prepare Vectors check point 1" << std::endl;
-
 
     size_t idx = 0;
     for(int i = 0; i < m_edgeMask.rows(); ++i)
@@ -322,19 +328,18 @@ void EdgeDirectVO::prepareVectors(int lvl)
         }
     }
 
-
     //> cchien3 ========================================================================
 	size_t numElements_ref = (m_edgeMask_reference.array() != 0).count();
 	size_t idx_ref = 0;
 
-    std::cout << "prepare Vectors check point 2" << std::endl;
     //* yzhen105: get the ccoordinates for reference edge pixels
 	//int idx_vec = 0;
     const int w = m_sequence.getFrameWidth(lvl);
     const int h = m_sequence.getFrameHeight(lvl);
     m_finalMask_reference.resize(numElements_ref);
 
-    std::cout << m_edgeMask_reference.rows() << std::endl;
+    std::cout << "Size of m_edgeMask_reference: " << m_edgeMask_reference.rows() << std::endl;
+    std::cout << "Size of nonzero m_edgeMask_reference: " << numElements_ref << std::endl;
 
     //> cchien3: fix the Segmentation fault issue
     //> Now that m_X2D_ref_Vector[lvl].row(i) is a std::vector storing ALL pixel coordinates (x,y) by (m_X2D_ref_Vector[lvl](i,0), m_X2D_ref_Vector[lvl](i,1))
@@ -356,6 +361,9 @@ void EdgeDirectVO::prepareVectors(int lvl)
             ++idx_ref;
         }
     }
+
+    std::cout << "Size of m_X2D_ref: " << m_X2D_ref.rows() << std::endl;
+    std::cout << idx_ref << std::endl;
 
     //> TEST TO UNDERSTAND HOW EIGEN WORKS ...
     std::cout << "level " << lvl << ":" << std::endl;
@@ -382,29 +390,8 @@ void EdgeDirectVO::prepareVectors(int lvl)
 
         edgeCoordinates_file.close();
     }
-
-
-/*    for(int i = 0; i < m_edgeMask_reference.rows(); i++)
-	{
-        for (int y = 0; y < h; ++y)
-        {
-            for (int x = 0; x < w; ++x)
-            {
-                if (m_edgeMask_reference[i] != 0)
-                {
-                    std::cout << x << ", " << y << std::endl;   
-                    m_X2D_ref_Vector[lvl].row(idx_vec) << x, y;
-                    ++idx_vec;
-                    ++idx_ref;
-                }
-            }
-        }
-    }*/
-
-    std::cout << "prepare Vectors check point 3" << std::endl;
     m_edgeMask_reference.resize(numElements_ref);
 	m_edgeMask_reference = m_finalMask_reference;
-    //m_X2D_ref            = m_X2D_ref_Vector[lvl].array();
 
 #endif //EDGEVO_SUBSET_POINTS
 ////////////////////////////////////////////////////////////
@@ -743,16 +730,13 @@ float EdgeDirectVO::GeometricError(const Eigen::Matrix<double,4,4>& invPose, int
     //* yzhen105: initialize the R and T matrix here
     Eigen::Matrix<float,3,3> R = (invPose.block<3,3>(0,0)).cast<float>() ;
     Eigen::Matrix<float,3,1> t = (invPose.block<3,1>(0,3)).cast<float>() ;
-    
+   
     //* yzhen105: resize 3D new image
     m_newX3D.resize(Eigen::NoChange, m_X3D.rows());
-    m_newX2D_ref.resize(Eigen::NoChange, m_X2D_ref.rows());
-    //* yzhen105: reprojection 
+    //m_newX2D_ref.resize(Eigen::NoChange, m_X2D_ref.rows());
+    //* yzhen105: reprojection
     m_newX3D     = R * m_X3D.transpose() + t.replicate(1, m_X3D.rows() );
-
-    std::cout << "check point 1" << std::endl;
-
-    m_newX2D_ref = m_X2D_ref;
+    //m_newX2D_ref = m_X2D_ref;
 
     //* yzhen105: get the camera matrix
     const Mat cameraMatrix(m_sequence.getCameraMatrix(lvl));
@@ -764,16 +748,13 @@ float EdgeDirectVO::GeometricError(const Eigen::Matrix<double,4,4>& invPose, int
     const int w = m_sequence.getFrameWidth(lvl);
     const int h = m_sequence.getFrameHeight(lvl);
 
-    //> cchien3: TESTING TO UNDERSTAND EIGEN ...
-    std::cout << "What appears to be in m_newX3D?" << std::endl;
-    std::cout << m_newX3D.row(0) << std::endl;
-
+   
     //* yzhen105: get the reprojected coordinates of edge pixels in new image
     m_warpedX = (fx * (m_newX3D.row(0)).array() / (m_newX3D.row(2)).array() ) + cx;
-    m_refX    = m_newX2D_ref.row(0).array();
+    //m_refX    = m_newX2D_ref.row(0).array();
     //m_warpedX.array() += cx;
     m_warpedY = (fy * (m_newX3D.row(1)).array() / (m_newX3D.row(2)).array() ) + cy;
-    m_refY    = m_newX2D_ref.row(1).array();
+    //m_refY    = m_newX2D_ref.row(1).array();
 
     m_finalMask = m_edgeMask;
 
@@ -781,7 +762,7 @@ float EdgeDirectVO::GeometricError(const Eigen::Matrix<double,4,4>& invPose, int
     m_finalMask = (m_X3D.col(2).array() <= 0.f).select(0, m_finalMask);
     m_finalMask = ( (m_X3D.col(2).array()).isFinite() ).select(m_finalMask, 0);
     m_finalMask = ( (m_newX3D.row(2).transpose().array()).isFinite() ).select(m_finalMask, 0);
-    
+   
     // Check new projected x coordinates are: 0 <= x < w-1
     m_finalMask = (m_warpedX.array() < 0.f).select(0, m_finalMask);
     m_finalMask = (m_warpedX.array() >= w-2).select(0, m_finalMask);
@@ -791,43 +772,242 @@ float EdgeDirectVO::GeometricError(const Eigen::Matrix<double,4,4>& invPose, int
     m_finalMask = (m_warpedY.array() < 0.f).select(0, m_finalMask);
     m_finalMask = (m_warpedY.array().isFinite()).select(m_finalMask, 0);
 
-    //* yzhen105: calculated the euclidean distance
+    size_t idx_cor = 0;
     size_t idx = 0;
     size_t numElements = (m_finalMask.array() != 0).count();
-    float prev_distance = EdgeVO::Settings::INF_F;
+    float prev_distance;
+    //size_t numElements = (m_warpedX.array() != 0).count();
     m_residual_GE.resize(2*numElements);
 
-    //> cchien3
-    /*
-    for (int i = 0; i < m_finalMask_reference.rows(); i++) {
-        // edge point (x,y) = (m_X2D_ref(i,0), m_X2D_ref(i,1))
-    }
-    */
-
     euc_distance_sum = 0.f;
+
+    //std::ofstream edgeCoordinates_file;
+    //std::string writeFileDir = "/users/yzhen105/data/yzhen105/EdgeDirectVO/";
+    //writeFileDir.append("coord_results.txt");
+    //edgeCoordinates_file.open(writeFileDir);
+    //std::cout << "numElements is " << numElements << std::endl;
+
+    std::cout << "========================================================" << std::endl;
+    std::cout << numElements << std::endl;
+    std::cout << m_warpedX.rows() << std::endl;
+
     for(int i = 0; i <  m_warpedX.rows(); ++i)    // new img coordinate
     {
-        for(int j = 0; i <  m_refX.rows(); ++j)  // ref img coordinate
+        if(m_finalMask[i] != 0)
         {
-            if(m_finalMask[i] != 0 && m_warpedY[j] != 0)
+            prev_distance = EdgeVO::Settings::INF_F;
+            //std::cout << "2. run here " << std::endl;
+            //std::cout << "m_X2D_ref(5,0) " << m_X2D_ref(5,0) << std::endl;
+            //std::cout << "m_X2D_ref(5,1) " << m_X2D_ref(5,1) << std::endl;
+            //std::cout << "m_warpedX[2] " << m_warpedX[2] << std::endl;
+            for(int j = 0; j <  m_X2D_ref.rows(); ++j)  // ref img coordinate
             {
+                //std::cout << "3. run here " << std::endl;
                 //* yzhen105: calculate the euclidean distance
-                distance = sqrt(pow((m_warpedX[i] - m_refX[i]),2)+pow((m_warpedY[j] - m_refX[j]),2)); //* yzhen105: #include <cmath>
+                //distance = sqrt(pow((m_warpedX[i] - m_refX[j]),2)+pow((m_warpedY[i] - m_refX[j]),2)); //* yzhen105: #include <cmath>
+                distance = (m_warpedX[i] - m_X2D_ref(j,0))*(m_warpedX[i] - m_X2D_ref(j,0))+(m_warpedY[i] - m_X2D_ref(j,1))*(m_warpedY[i] - m_X2D_ref(j,1)); //* yzhen105: #include <cmath>
+                //std::cout << "4. run here " << std::endl;
+                //std::cout << "distance is " << std::endl;
+                //std::cout << std::endl << distance << std::endl;
                 if(distance < prev_distance)
                 {
-                    prev_distance = distance; 
-                    m_residual_GE[2*idx]   = m_warpedX[i] - m_refX[i] ;
-                    m_residual_GE[2*idx+1] = m_warpedY[i] - m_refY[i] ;
+                    prev_distance = distance;
+                    idx_cor       = j;
+                    //std::cout << "new distance is " << prev_distance << std::endl;
+                    //std::cout << "with i " << i << ", j " << j << ", idx " << idx << std::endl;
+                    //std::cout << "m_residual_GE[2*idx]: " << m_residual_GE[2*idx] << ", m_residual_GE[2*idx+1] " << m_residual_GE[2*idx+1] << std::endl;
                 }
             }
-            
+            //edgeCoordinates_file << m_X2D_ref(idx_cor,0) << "\t" << m_X2D_ref(idx_cor,1) << "\n";
+            m_residual_GE[2*idx]   = m_warpedX[i] - m_X2D_ref(idx_cor,0) ;
+            m_residual_GE[2*idx+1] = m_warpedY[i] - m_X2D_ref(idx_cor,1) ;
+            //std::cout << "m_warpedX.rows() is " <<  m_warpedX.rows() << ", m_X2D_ref.rows() is " << m_X2D_ref.rows() << std::endl;
+            ++idx;
+            euc_distance_sum += prev_distance;
+            //std::cout << "5. run here " << std::endl;
         }
-        ++idx;
-        euc_distance_sum += prev_distance;
     }
-    //* yzhen105: should return the sum of (x_bar-x)^2 ←error for geometric 
+    //edgeCoordinates_file.close();
+    //std::cout << "6. run here " << std::endl;
+    //* yzhen105: should return the sum of (x_bar-x)^2 ←error for geometric
     return (euc_distance_sum);
 }
 
+//* yzhen105: Geometric Error Calculation
+float EdgeDirectVO::GeometricErrorFromCH(const Eigen::Matrix<double,4,4>& invPose, int lvl)
+{
+    //* yzhen105: initialize the R and T matrix here
+    Eigen::Matrix<float,3,3> R = (invPose.block<3,3>(0,0)).cast<float>() ;
+    Eigen::Matrix<float,3,1> t = (invPose.block<3,1>(0,3)).cast<float>() ;
+   
+    //* yzhen105: resize 3D new image
+    m_newX3D.resize(Eigen::NoChange, m_X3D.rows());
+    //m_newX2D_ref.resize(Eigen::NoChange, m_X2D_ref.rows());
+    //* yzhen105: reprojection
+    m_newX3D     = R * m_X3D.transpose() + t.replicate(1, m_X3D.rows() );
+
+    //* yzhen105: get the camera matrix
+    const Mat cameraMatrix(m_sequence.getCameraMatrix(lvl));
+    const float fx = cameraMatrix.at<float>(0, 0);
+    const float cx = cameraMatrix.at<float>(0, 2);
+    const float fy = cameraMatrix.at<float>(1, 1);
+    const float cy = cameraMatrix.at<float>(1, 2);
+    //* yzhen105: get the size of current image
+    const int w = m_sequence.getFrameWidth(lvl);
+    const int h = m_sequence.getFrameHeight(lvl);
+
+    //* yzhen105: get the reprojected coordinates of edge pixels in new image
+    m_warpedX = (fx * (m_newX3D.row(0)).array() / (m_newX3D.row(2)).array() ) + cx;
+    //m_warpedX.array() += cx;
+    m_warpedY = (fy * (m_newX3D.row(1)).array() / (m_newX3D.row(2)).array() ) + cy;
+
+    m_finalMask = m_edgeMask;
+
+    m_finalMask = (m_newX3D.row(2).transpose().array() <= 0.f).select(0, m_finalMask);
+    m_finalMask = (m_X3D.col(2).array() <= 0.f).select(0, m_finalMask);
+    m_finalMask = ( (m_X3D.col(2).array()).isFinite() ).select(m_finalMask, 0);
+    m_finalMask = ( (m_newX3D.row(2).transpose().array()).isFinite() ).select(m_finalMask, 0);
+   
+    // Check new projected x coordinates are: 0 <= x < w-1
+    m_finalMask = (m_warpedX.array() < 0.f).select(0, m_finalMask);
+    m_finalMask = (m_warpedX.array() >= w-2).select(0, m_finalMask);
+    m_finalMask = (m_warpedX.array().isFinite()).select(m_finalMask, 0);
+    // Check new projected x coordinates are: 0 <= y < h-1
+    m_finalMask = (m_warpedY.array() >= h-2).select(0, m_finalMask);
+    m_finalMask = (m_warpedY.array() < 0.f).select(0, m_finalMask);
+    m_finalMask = (m_warpedY.array().isFinite()).select(m_finalMask, 0);
+
+    size_t idx_cor = 0;
+    size_t idx = 0;
+    size_t numElements = (m_finalMask.array() != 0).count();
+    float prev_distance;
+    m_residual_GE.resize(2*numElements);
+
+    euc_distance_sum = 0.f;
+
+    std::ofstream edgeCoordinates_file;
+    std::string writeFileDir = "/users/cchien3/data/cchien3/github-repos/GeometricError/";
+    writeFileDir.append("fetch_coord_results.txt");
+    edgeCoordinates_file.open(writeFileDir);
+    std::cout << "numElements is " << numElements << std::endl;
+
+    std::cout << "========================================================" << std::endl;
+    std::cout << numElements << std::endl;
+    std::cout << m_warpedX.rows() << std::endl;
+
+    int reproj_indx  = 0;
+    int closest_indx = 0;
+    int closestX, closestY;
+
+    for(int i = 0; i <  m_warpedX.rows(); ++i)    // new img coordinate
+    {
+        if(m_finalMask[i] != 0)
+        {
+            //prev_distance = EdgeVO::Settings::INF_F;
+
+            //> get the index from warpedX and warpedY 
+            reproj_indx  = m_warpedY[i] * w + m_warpedX[i];
+
+            //> find the index of the closest from the distance transform label map
+            closest_indx = m_distLabel_reference[reproj_indx];
+
+            //> recover from the closest index to pixel coordinate
+            closestX = m_X2D_ref(closest_indx, 0);
+            closestY = m_X2D_ref(closest_indx, 1);
+
+            edgeCoordinates_file << reproj_indx << "\t" << closest_indx << "\t" << m_warpedX[i] << "\t" << m_warpedY[i] << "\t" << closestX << "\t" << closestY << "\n";
+
+            distance = (m_warpedX[i] - closestX)*(m_warpedX[i] - closestX) + (m_warpedY[i] - closestY)*(m_warpedY[i] - closestY);
+            /*for(int j = 0; j <  m_X2D_ref.rows(); ++j)  // ref img coordinate
+            {
+                //std::cout << "3. run here " << std::endl;
+                //* yzhen105: calculate the euclidean distance
+                //distance = sqrt(pow((m_warpedX[i] - m_refX[j]),2)+pow((m_warpedY[i] - m_refX[j]),2)); //* yzhen105: #include <cmath>
+                distance = (m_warpedX[i] - m_X2D_ref(j,0))*(m_warpedX[i] - m_X2D_ref(j,0))+(m_warpedY[i] - m_X2D_ref(j,1))*(m_warpedY[i] - m_X2D_ref(j,1)); //* yzhen105: #include <cmath>
+                //std::cout << "4. run here " << std::endl;
+                //std::cout << "distance is " << std::endl;
+                //std::cout << std::endl << distance << std::endl;
+                if(distance < prev_distance)
+                {
+                    prev_distance = distance;
+                    idx_cor       = j;
+                    //std::cout << "new distance is " << prev_distance << std::endl;
+                    //std::cout << "with i " << i << ", j " << j << ", idx " << idx << std::endl;
+                    //std::cout << "m_residual_GE[2*idx]: " << m_residual_GE[2*idx] << ", m_residual_GE[2*idx+1] " << m_residual_GE[2*idx+1] << std::endl;
+                }
+            }
+            //edgeCoordinates_file << m_X2D_ref(idx_cor,0) << "\t" << m_X2D_ref(idx_cor,1) << "\n";
+            m_residual_GE[2*idx]   = m_warpedX[i] - m_X2D_ref(idx_cor,0) ;
+            m_residual_GE[2*idx+1] = m_warpedY[i] - m_X2D_ref(idx_cor,1) ;
+            //std::cout << "m_warpedX.rows() is " <<  m_warpedX.rows() << ", m_X2D_ref.rows() is " << m_X2D_ref.rows() << std::endl;
+            ++idx;*/
+            euc_distance_sum += distance;
+            //std::cout << "5. run here " << std::endl;
+        }
+    }
+    edgeCoordinates_file.close();
+    //std::cout << "6. run here " << std::endl;
+    //* yzhen105: should return the sum of (x_bar-x)^2 ←error for geometric
+    return (euc_distance_sum);
+}
+
+//* yzhen105: Geometric Error's Jacobian Calculation
+/*void EdgeDirectVO::solveSystemOfEquationsForGE(const float lambda, const int lvl, Eigen::Matrix<double, 6 , Eigen::RowMajor>& poseupdateGE)
+{
+    const Mat cameraMatrix(m_sequence.getCameraMatrix(lvl));
+    const float fx = cameraMatrix.at<float>(0, 0);
+    const float cx = cameraMatrix.at<float>(0, 2);
+    const float fy = cameraMatrix.at<float>(1, 1);
+    const float cy = cameraMatrix.at<float>(1, 2);
+
+    size_t numElements = m_im2Final.rows();
+    Eigen::Matrix<float, Eigen::Dynamic, Eigen::RowMajor> Z2 = m_ZFinal.array() * m_ZFinal.array();
+
+    m_Jacobian_GE.resize(numElements, 12);
+    m_Jacobian_GE.col(0)  = fx / m_ZFinal.array();
+   
+    m_Jacobian_GE.col(1)  = Eigen::Matrix<float, Eigen::Dynamic, Eigen::RowMajor>::Zero(numElements);
+
+    m_Jacobian_GE.col(2)  = fx * m_XFinal.array() / Z2.array();
+
+    m_Jacobian_GE.col(3)  = -fx * m_XFinal.array() * m_YFinal.array() / Z2.array();
+
+    m_Jacobian_GE.col(4)  = fx + fx * m_XFinal.array() * m_XFinal.array() / Z2.array();
+
+    m_Jacobian_GE.col(5)  = fx * m_YFinal.array() / m_ZFinal.array();
+
+    m_Jacobian_GE.col(6)  = Eigen::Matrix<float, Eigen::Dynamic, Eigen::RowMajor>::Zero(numElements);
+
+    m_Jacobian_GE.col(7)  = fy / m_ZFinal.array();
+
+    m_Jacobian_GE.col(8)  = -fy * m_YFinal.array() / Z2.array();
+
+    m_Jacobian_GE.col(9)  = -fy - fy * m_YFinal.array() * m_YFinal.array() / Z2.array();
+
+    m_Jacobian_GE.col(10) = fy * m_XFinal.array() * m_YFinal.array() / Z2.array();
+
+    m_Jacobian_GE.col(11) = fy * m_XFinal.array() / m_ZFinal.array();
+    m_Jacobian_GE.resize(numElements*2, 6);
+
+    //* yzhen105: ???
+    //* yzhen105: N to 2*N, but how?
+    //* yzhen105: possible approach
+    m_weights_GE.resize(numElements*2);
+    m_weights_GE = Eigen::Matrix<float, Eigen::Dynamic, Eigen::RowMajor>::Ones(numElements*2);
+    m_weights_GE = ( ( (m_residual_GE.array()).abs() ) > EdgeVO::Settings::HUBER_THRESH ).select( 0.0 , m_weights_GE);
+
+    m_Jacobian_GE.col(0)  = m_Jacobian_GE.col(0).array() * m_weights_GE.array();
+    m_Jacobian_GE.col(1)  = m_Jacobian_GE.col(1).array() * m_weights_GE.array();
+    m_Jacobian_GE.col(2)  = m_Jacobian_GE.col(2).array() * m_weights_GE.array();
+    m_Jacobian_GE.col(3)  = m_Jacobian_GE.col(3).array() * m_weights_GE.array();
+    m_Jacobian_GE.col(4)  = m_Jacobian_GE.col(4).array() * m_weights_GE.array();
+    m_Jacobian_GE.col(5)  = m_Jacobian_GE.col(5).array() * m_weights_GE.array();
+   
+    m_residual_GE.array() *= m_weights_GE.array();
+   
+    poseupdateGE = -( (m_Jacobian_GE.transpose() * m_Jacobian_GE).cast<double>() ).ldlt().solve( (m_Jacobian_GE.transpose() * m_residual_GE).cast<double>() );
+
+   
+}*/
 
 } //end namespace EdgeVO

@@ -37,7 +37,7 @@ class EdgeDirectVO{
 
         //> cchien3: prepare edge points coordinates
         void prepareEdgeCoordinates();
-
+        float GeometricErrorFromCH(const Eigen::Matrix<double,4,4>& invPose, int lvl);
         
 
     private:
@@ -103,6 +103,8 @@ class EdgeDirectVO{
         //* yzhen105: edge pixel of the reference image
         Eigen::Matrix<unsigned char, Eigen::Dynamic, Eigen::RowMajor> m_edgeMask_reference;
         Eigen::Matrix<unsigned char, Eigen::Dynamic, Eigen::RowMajor> m_finalMask_reference;
+        //> cchien3: distance transform label map of the reference image
+        Eigen::Matrix<int, Eigen::Dynamic, Eigen::RowMajor> m_distLabel_reference;
 
         float m_lambda;
         //* yzhen105: for Geometric Error

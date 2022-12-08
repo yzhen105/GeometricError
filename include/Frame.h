@@ -37,6 +37,10 @@ class Frame{
         cv::Mat getGY(int lvl) const;
         cv::Mat getImageVector(int lvl) const;
 
+        //> cchien3: get distance transform map and its labels for frames
+        cv::Mat getDistanceTransformMap(int lvl) const;
+        cv::Mat getDistanceTransformLabelMap(int lvl) const;
+
         void createPyramid(cv::Mat& src, std::vector<cv::Mat>& dst, int pyramidSize, int interpolationFlag);
         void calcGradientX(cv::Mat& src, cv::Mat& dst);
         void calcGradientY(cv::Mat& src, cv::Mat& dst);
@@ -66,6 +70,10 @@ class Frame{
         void setDepthMap(cv::Mat& depthMap);
         bool hasDepthMap();
 
+        //> cchien3 add: check cv::Mat class type
+        std::string identifyMatType(cv::Mat img);
+
+
     private:
         cv::Mat m_image;
         cv::Mat m_depthMap;
@@ -80,6 +88,11 @@ class Frame{
         std::vector<cv::Mat> m_pyramidMask;
         std::string m_imageName;
         std::string m_depthName;
+
+        //> cchien3 add: get distance transform map and labels for all levels of a pyramid
+        std::vector<cv::Mat> m_pyramidEdge_binary;
+        std::vector<cv::Mat> m_pyramidDT_dists;
+        std::vector<cv::Mat> m_pyramidDT_labels;
 
         cv::Ptr<cv::ximgproc::StructuredEdgeDetection> m_sforestDetector;
         std::vector<cv::Mat> m_pyramidImageSF;

@@ -2,6 +2,11 @@
 #include "Settings.h"
 #include <algorithm>
 #include <utility>
+#include <stdio.h> 
+#include <stdlib.h> 
+#include <iostream>
+#include <iomanip>
+#include <fstream>
 #include <opencv2/core/core.hpp>
 #include <opencv2/imgproc.hpp>
 #include <opencv2/highgui/highgui.hpp>
@@ -37,6 +42,10 @@ Frame::Frame(std::string imagePath, std::string depthPath, Sequence* seq)
     m_pyramid_Idx.resize(EdgeVO::Settings::PYRAMID_DEPTH);
     m_pyramid_Idy.resize(EdgeVO::Settings::PYRAMID_DEPTH);
 
+    //> cchien3 add
+    m_pyramidEdge_binary.resize(EdgeVO::Settings::PYRAMID_DEPTH);
+    m_pyramidDT_dists.resize(EdgeVO::Settings::PYRAMID_DEPTH);
+    m_pyramidDT_labels.resize(EdgeVO::Settings::PYRAMID_DEPTH);
 
     m_pyramidImageUINT[0] = m_image.clone(); 
     m_pyramidImage[0] = m_image;
@@ -77,6 +86,11 @@ void Frame::releaseAllVectors()
     m_pyramidMask.clear();
     m_pyramidEdge.clear();
     m_pyramidImageUINT.clear();
+
+    m_pyramidEdge_binary.clear();
+    m_pyramidDT_dists.clear();
+    m_pyramidDT_labels.clear();
+
     //m_pyramidImageFloat.clear();
 }
 
@@ -157,6 +171,17 @@ cv::Mat Frame::getGradientY(int lvl) const
     return (m_pyramid_Idy[lvl].clone()).reshape(1, m_pyramid_Idy[lvl].rows * m_pyramid_Idy[lvl].cols);
 }
 
+//> cchien3 add: get distance transform map
+cv::Mat Frame::getDistanceTransformMap(int lvl) const
+{
+    return (m_pyramidDT_dists[lvl].clone()).reshape(1, m_pyramidDT_dists[lvl].rows * m_pyramidDT_dists[lvl].cols);
+}
+
+//> cchien3 add: get distance transform label map
+cv::Mat Frame::getDistanceTransformLabelMap(int lvl) const
+{
+    return (m_pyramidDT_labels[lvl].clone()).reshape(1, m_pyramidDT_labels[lvl].rows * m_pyramidDT_labels[lvl].cols);
+}
 
 void Frame::makePyramids()
 {
@@ -256,6 +281,32 @@ void Frame::calcGradientY(cv::Mat& src, cv::Mat& dst)
         }
     }
 }
+
+std::string Frame::identifyMatType(cv::Mat img) {
+    //> cchien3: add type identification
+    int type = img.type();
+    std::string r;
+
+    uchar depth = type & CV_MAT_DEPTH_MASK;
+    uchar chans = 1 + (type >> CV_CN_SHIFT);
+
+    switch ( depth ) {
+        case CV_8U:  r = "8U"; break;
+        case CV_8S:  r = "8S"; break;
+        case CV_16U: r = "16U"; break;
+        case CV_16S: r = "16S"; break;
+        case CV_32S: r = "32S"; break;
+        case CV_32F: r = "32F"; break;
+        case CV_64F: r = "64F"; break;
+        default:     r = "User"; break;
+    }
+
+    r += "C";
+    r += (chans+'0');
+    printf("Edge Matrix: %s %dx%d \n", r.c_str(), img.cols, img.rows );
+    return r;
+}
+
 void Frame::createCannyEdgePyramids()
 {
     for(size_t i = 0; i < m_pyramidImage.size(); ++i)
@@ -266,8 +317,89 @@ void Frame::createCannyEdgePyramids()
         float upperThreshold = cv::threshold(m_pyramidImageUINT[i], img_thresh, 0, 255, cv::THRESH_BINARY | cv::THRESH_OTSU);
         float lowerThresh = EdgeVO::Settings::CANNY_RATIO * upperThreshold;
         Canny(m_pyramidImageUINT[i], m_pyramidEdge[i], lowerThresh, upperThreshold, 3, true);
-        //* yzhen105: check the .size()
-        //* yzheng105: maybe secondary here
+
+        
+
+        //> cchien3: clone the edge map and binarize to fit the need of distance transform
+        m_pyramidEdge_binary[i] = m_pyramidEdge[i].clone();
+        for (int r = 0; r < m_pyramidEdge[i].rows; r++) {
+            for (int c = 0; c < m_pyramidEdge[i].cols; c++) {
+                m_pyramidEdge_binary[i].at<uchar>(r,c) = ((int)(m_pyramidEdge[i].at<uchar>(r,c)) == 0) ? 1 : 0;
+            }
+        }
+
+        std::cout << "build pyramid check point 2" << std::endl;
+
+        //> cchien3: write to a file
+        /*if (i == 0) {
+            std::cout << "Writing data to a file ..." << std::endl;
+            std::ofstream edgeImg_file;
+            std::string writeFileDir = "/users/cchien3/data/cchien3/github-repos/GeometricError/";
+            writeFileDir.append("edgeImgData.txt");
+            edgeImg_file.open(writeFileDir);
+            if ( !edgeImg_file.is_open() ) std::cout << "Could not open the edgeImg_file!" << std::endl;
+            for (int r = 0; r < m_pyramidEdge[i].rows; r++) {
+                for (int c = 0; c < m_pyramidEdge[i].cols; c++) {
+                    edgeImg_file << ((int)(m_pyramidEdge[i].at<uchar>(r,c))) << "\t";
+                }
+                edgeImg_file << "\n";
+            }
+            edgeImg_file.close();
+        }
+
+        if (i == 0) {
+            std::cout << "Writing data to a file ..." << std::endl;
+            std::ofstream edgeImg_file;
+            std::string writeFileDir = "/users/cchien3/data/cchien3/github-repos/GeometricError/";
+            writeFileDir.append("binaryImgData.txt");
+            edgeImg_file.open(writeFileDir);
+            if ( !edgeImg_file.is_open() ) std::cout << "Could not open the edgeImg_file!" << std::endl;
+            for (int r = 0; r < m_pyramidEdge_binary[i].rows; r++) {
+                for (int c = 0; c < m_pyramidEdge_binary[i].cols; c++) {
+                    edgeImg_file << ((int)(m_pyramidEdge_binary[i].at<uchar>(r,c))) << "\t";
+                }
+                edgeImg_file << "\n";
+            }
+            edgeImg_file.close();
+        }*/
+
+
+        //> cchien3 add: create a distance transform distance map and a distance transform label map
+        distanceTransform(m_pyramidEdge_binary[i], m_pyramidDT_dists[i], m_pyramidDT_labels[i], cv::DIST_L2, cv::DIST_MASK_PRECISE, cv::DIST_LABEL_PIXEL);
+
+        //> check the cv::Mat class types
+        std::string DT_type = identifyMatType(m_pyramidDT_dists[i]);
+        std::string label_type = identifyMatType(m_pyramidDT_labels[i]);
+
+        if (i == m_pyramidImage.size()-1 ) {
+            imwrite( "/users/cchien3/data/cchien3/github-repos/GeometricError/Edges.jpg", m_pyramidEdge[i] );
+            imwrite( "/users/cchien3/data/cchien3/github-repos/GeometricError/binary.jpg", m_pyramidEdge_binary[i] );
+            //imwrite( "/users/cchien3/data/cchien3/github-repos/GeometricError/imgDT_dists.jpg", m_pyramidDT_dists[i] );
+            //imwrite( "/users/cchien3/data/cchien3/github-repos/GeometricError/imgDT_lables.jpg", m_pyramidDT_labels[i] );
+        }
+
+        //> cchien3 TODO: WRITE DT AND LABEL RESULTS TO A FILE AND SEE WHETHER THE RESULTS LOOK GOOD!!!!!!
+        if (i == m_pyramidImage.size()-1) {
+            std::cout << "Writing data to a file ..." << std::endl;
+            std::ofstream dists_Img_file, label_img_file;
+            std::string writeFileDir_dists = "/users/cchien3/data/cchien3/github-repos/GeometricError/";
+            writeFileDir_dists.append("DT_Data.txt");
+            std::string writeFileDir_label = "/users/cchien3/data/cchien3/github-repos/GeometricError/";
+            writeFileDir_label.append("Label_Data.txt");
+            dists_Img_file.open(writeFileDir_dists);
+            label_img_file.open(writeFileDir_label);
+            if ( !dists_Img_file.is_open() || label_img_file.is_open()) std::cout << "Could not open the files!" << std::endl;
+            for (int r = 0; r < m_pyramidDT_dists[i].rows; r++) {
+                for (int c = 0; c < m_pyramidDT_dists[i].cols; c++) {
+                    dists_Img_file << ((m_pyramidDT_dists[i].at<float>(r,c))) << "\t";
+                    label_img_file << ((m_pyramidDT_labels[i].at<int>(r,c))) << "\t";
+                }
+                dists_Img_file << "\n";
+                label_img_file << "\n";
+            }
+            dists_Img_file.close();
+            label_img_file.close();
+        }
     }
     //void Canny(InputArray image, OutputArray edges, float threshold1, float threshold2, int apertureSize=3, bool L2gradient=false )
 }
